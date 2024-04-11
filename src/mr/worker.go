@@ -1,7 +1,8 @@
 package mr
 
 type MRWorker struct {
-	// todo
+	mapF    MapFunc
+	reduceF ReduceFunc
 }
 
 func New(mapF MapFunc, reduceF ReduceFunc) MRWorker {
