@@ -9,9 +9,27 @@ func New(mapF MapFunc, reduceF ReduceFunc) MRWorker {
 	return MRWorker{}
 }
 
+func (w *MRWorker) getTask() (Task, error) {
+	// todo
+}
+
 // run will require tasks from coordinator until it ends
 func (w *MRWorker) run() {
-	// todo
+	for {
+		t, err := w.getTask()
+		if err != nil {
+			// todo
+		}
+
+		stop, err := t.process(w)
+		if err != nil {
+			// todo
+		}
+
+		if stop {
+			break
+		}
+	}
 }
 
 func Worker(mapF MapFunc, reduceF ReduceFunc) {
