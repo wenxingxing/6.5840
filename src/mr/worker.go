@@ -1,6 +1,7 @@
 package mr
 
 import (
+	"log"
 	"math/rand"
 	"strconv"
 	"time"
@@ -44,15 +45,23 @@ func (w *MRWorker) run() {
 	for {
 		t, err := w.getTask()
 		if err != nil {
-			// todo
+			log.Printf("get task error: %v", err)
+			time.Sleep(1 * time.Second)
+			continue
+		}
+		if t == nil {
+			log.Fatalf("get nil task")
 		}
 
-		stop, err := t.process(w)
+		stop, err := t.Process(w)
 		if err != nil {
-			// todo
+			log.Printf("Process task error: %v", err)
+			time.Sleep(1 * time.Second)
+			continue
 		}
 
 		if stop {
+			log.Printf("worker %v stop", w.uuid)
 			break
 		}
 	}

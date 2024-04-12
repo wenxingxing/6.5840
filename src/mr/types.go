@@ -34,13 +34,13 @@ func (a ByKey) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
 func (a ByKey) Less(i, j int) bool { return a[i].Key < a[j].Key }
 
 type Task interface {
-	// process do the task and return True if need to stop
-	process(w *MRWorker) (ShouldStop, error)
+	// Process do the task and return True if need to stop
+	Process(w *MRWorker) (ShouldStop, error)
 }
 
 type NoopTask struct{}
 
-func (t NoopTask) process(_ *MRWorker) (ShouldStop, error) {
+func (t NoopTask) Process(_ *MRWorker) (ShouldStop, error) {
 	slog.Info("NoopTask, sleep 1s")
 	time.Sleep(1 * time.Second)
 	return Continue, nil
@@ -48,7 +48,7 @@ func (t NoopTask) process(_ *MRWorker) (ShouldStop, error) {
 
 type StopTask struct{}
 
-func (t StopTask) process(_ *MRWorker) (ShouldStop, error) {
+func (t StopTask) Process(_ *MRWorker) (ShouldStop, error) {
 	return true, nil
 }
 
@@ -58,7 +58,7 @@ type MapTask struct {
 	nReduce  int
 }
 
-func (t MapTask) process(w *MRWorker) (ShouldStop, error) {
+func (t MapTask) Process(w *MRWorker) (ShouldStop, error) {
 	slog.Info("MapTask", t.id, t.filename)
 	// read task file
 	filename := t.filename
@@ -119,7 +119,7 @@ type ReduceTask struct {
 	nMap int
 }
 
-func (t ReduceTask) process(w *MRWorker) (ShouldStop, error) {
+func (t ReduceTask) Process(w *MRWorker) (ShouldStop, error) {
 	slog.Info("ReduceTask", t.id)
 	intermediate := []KeyValue{}
 

@@ -14,20 +14,17 @@ import (
 )
 import "strconv"
 
-//
-// example to show how to declare the arguments
-// and reply for an RPC.
-//
+type GetTaskArgs struct{}
 
-type ExampleArgs struct {
-	X int
+type GetTaskReply struct {
+	Task Task
 }
 
-type ExampleReply struct {
-	Y int
+type ReportTaskDoneArgs struct {
+	Task Task
 }
 
-// Add your RPC definitions here.
+type ReportTaskDoneReply struct{}
 
 // Cook up a unique-ish UNIX-domain socket name
 // in /var/tmp, for the coordinator.
@@ -42,7 +39,7 @@ func coordinatorSock() string {
 // rpcCall send an RPC request to the coordinator, wait for the response.
 // usually returns true.
 // returns false if something goes wrong.
-func rpcCall(rpcname string, args interface{}, reply interface{}) bool {
+func rpcCall(rpcname string, args any, reply any) bool {
 	// c, err := rpc.DialHTTP("tcp", "127.0.0.1"+":1234")
 	sockname := coordinatorSock()
 	c, err := rpc.DialHTTP("unix", sockname)
