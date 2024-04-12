@@ -49,7 +49,7 @@ type Task interface {
 type NoopTask struct{}
 
 func (t NoopTask) Process(_ *MRWorker) (ShouldStop, error) {
-	slog.Info("NoopTask, sleep 1s")
+	slog.Debug("NoopTask, sleep 1s")
 	time.Sleep(1 * time.Second)
 	return Continue, nil
 }
@@ -67,7 +67,6 @@ type MapTask struct {
 }
 
 func (t MapTask) Process(w *MRWorker) (ShouldStop, error) {
-	slog.Info("MapTask", t)
 	// read task file
 	filename := t.Filename
 	file, err := os.Open(filename)
@@ -89,7 +88,7 @@ func (t MapTask) Process(w *MRWorker) (ShouldStop, error) {
 	for i := 0; i < t.NReduce; i++ {
 		oname := intermediateFilename(t.Id, i)
 		// append to file, create if not exist
-		ofile, err := os.OpenFile(oname, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+		ofile, err := os.Create(oname)
 		if err != nil {
 			slog.Error("cannot open", oname, err)
 			return Continue, err
@@ -128,7 +127,6 @@ type ReduceTask struct {
 }
 
 func (t ReduceTask) Process(w *MRWorker) (ShouldStop, error) {
-	slog.Info("ReduceTask", t)
 	intermediate := []KeyValue{}
 
 	// read mr-0-Id -> mr-(NMap-1)-Id

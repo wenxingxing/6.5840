@@ -105,11 +105,9 @@ func (c *Coordinator) nextReduceTask() Task {
 func (c *Coordinator) GetTask(args *GetTaskArgs, reply *GetTaskReply) error {
 	if !c.allMapTasksDone() {
 		reply.Task = c.nextMapTask()
-		log.Printf("GetTask: %v", reply.Task)
 		return nil
 	} else if !c.allReduceTasksDone() {
 		reply.Task = c.nextReduceTask()
-		log.Printf("GetTask: %v", reply.Task)
 		return nil
 	} else {
 		reply.Task = StopTask{}
