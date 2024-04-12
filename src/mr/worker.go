@@ -3,29 +3,18 @@ package mr
 import (
 	"errors"
 	"log"
-	"math/rand"
-	"strconv"
 	"time"
 )
 
 type MRWorker struct {
 	mapF    MapFunc
 	reduceF ReduceFunc
-	uuid    string
-}
-
-func simpleUUID() string {
-	// generate a unique from random number and timestamp
-	randInt := rand.Int()
-	t := time.Now().UnixNano()
-	return strconv.Itoa(randInt) + strconv.FormatInt(t, 10)
 }
 
 func New(mapF MapFunc, reduceF ReduceFunc) MRWorker {
 	return MRWorker{
 		mapF:    mapF,
 		reduceF: reduceF,
-		uuid:    simpleUUID(),
 	}
 }
 
