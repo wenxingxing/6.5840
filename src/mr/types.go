@@ -44,9 +44,14 @@ func (a ByKey) Less(i, j int) bool { return a[i].Key < a[j].Key }
 type Task interface {
 	// Process do the task and return True if need to stop
 	Process(w *MRWorker) (ShouldStop, error)
+	GetId() int
 }
 
 type NoopTask struct{}
+
+func (t NoopTask) GetId() int {
+	return -1
+}
 
 func (t NoopTask) Process(_ *MRWorker) (ShouldStop, error) {
 	slog.Debug("NoopTask, sleep 1s")
@@ -56,6 +61,10 @@ func (t NoopTask) Process(_ *MRWorker) (ShouldStop, error) {
 
 type StopTask struct{}
 
+func (t StopTask) GetId() int {
+	return -1
+}
+
 func (t StopTask) Process(_ *MRWorker) (ShouldStop, error) {
 	return true, nil
 }
@@ -64,6 +73,10 @@ type MapTask struct {
 	Filename string
 	Id       int
 	NReduce  int
+}
+
+func (t MapTask) GetId() int {
+	return t.Id
 }
 
 func (t MapTask) Process(w *MRWorker) (ShouldStop, error) {
@@ -124,6 +137,10 @@ func (t MapTask) Process(w *MRWorker) (ShouldStop, error) {
 type ReduceTask struct {
 	Id   int
 	NMap int
+}
+
+func (t ReduceTask) GetId() int {
+	return t.Id
 }
 
 func (t ReduceTask) Process(w *MRWorker) (ShouldStop, error) {

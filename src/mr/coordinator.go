@@ -1,8 +1,6 @@
 package mr
 
 import (
-	"errors"
-	"fmt"
 	"log"
 	"sync"
 	"time"
@@ -12,108 +10,94 @@ import "os"
 import "net/rpc"
 import "net/http"
 
-//type TaskManager interface {
-//	Next() Task
-//	Done() bool
-//	ReportDone(Task) error
-//}
+type TaskManager struct {
+	pendingTasks  chan Task
+	finishedTasks map[int]bool
+	mtx           sync.Mutex
+
+	timeout time.Duration
+	nTasks  int
+}
+
+func NewTaskManager(n int, timeout time.Duration) TaskManager {
+	return TaskManager{
+		pendingTasks:  make(chan Task, n),
+		finishedTasks: make(map[int]bool),
+		timeout:       timeout,
+		nTasks:        n,
+	}
+}
+
+func (t *TaskManager) done() bool {
+	t.mtx.Lock()
+	defer t.mtx.Unlock()
+	return len(t.finishedTasks) == t.nTasks
+}
+
+func (t *TaskManager) next() Task {
+	select {
+	case task := <-t.pendingTasks:
+		go func() {
+			// check if the task is done after timeout
+			time.Sleep(t.timeout)
+			t.mtx.Lock()
+			defer t.mtx.Unlock()
+			if _, ok := t.finishedTasks[task.GetId()]; !ok {
+				log.Printf("task %v is not finished after timeout, put it back to pendingTasks", task.GetId())
+				t.pendingTasks <- task
+			}
+		}()
+		return task
+	default:
+		return NoopTask{}
+	}
+}
+
+func (t *TaskManager) addTask(task Task) {
+	t.pendingTasks <- task
+}
+
+func (t *TaskManager) markTaskDone(task Task) {
+	t.mtx.Lock()
+	defer t.mtx.Unlock()
+	t.finishedTasks[task.GetId()] = true
+}
 
 type Coordinator struct {
-	pendingMapTasks     chan MapTask
-	finishedMapTasks    map[int]bool
-	mtxFinishedMapTasks sync.Mutex
-
-	pendingReduceTasks     chan ReduceTask
-	finishedReduceTasks    map[int]bool
-	mtxFinishedReduceTasks sync.Mutex
-
-	files   []string
-	mapId   map[string]int
-	nMap    int
-	nReduce int
+	mapTaskManager    TaskManager
+	reduceTaskManager TaskManager
 
 	timeout time.Duration
 }
 
-func (c *Coordinator) init() {
-	for i, file := range c.files {
-		c.mapId[file] = i
+func (c *Coordinator) init(files []string, nReduce int) {
+	for i := 0; i < len(files); i++ {
+		c.mapTaskManager.addTask(
+			MapTask{
+				Id:       i,
+				Filename: files[i],
+				NReduce:  nReduce,
+			},
+		)
 	}
-	for i := 0; i < c.nMap; i++ {
-		c.pendingMapTasks <- MapTask{
-			Id:       i,
-			Filename: c.files[i],
-			NReduce:  c.nReduce,
-		}
-	}
-	for i := 0; i < c.nReduce; i++ {
-		c.pendingReduceTasks <- ReduceTask{
-			Id:   i,
-			NMap: c.nMap,
-		}
-	}
-}
 
-func (c *Coordinator) allMapTasksDone() bool {
-	c.mtxFinishedMapTasks.Lock()
-	defer c.mtxFinishedMapTasks.Unlock()
-	return len(c.finishedMapTasks) == c.nMap
-}
-
-func (c *Coordinator) nextMapTask() Task {
-	// if pendingMapTasks is empty, return NoopTask
-	// else return the next map task
-	select {
-	case task := <-c.pendingMapTasks:
-		go func() {
-			// check if the task is done after timeout
-			time.Sleep(c.timeout)
-			c.mtxFinishedMapTasks.Lock()
-			defer c.mtxFinishedMapTasks.Unlock()
-			if _, ok := c.finishedMapTasks[task.Id]; !ok {
-				log.Printf("task %v is not finished after timeout, put it back to pendingMapTasks", task.Id)
-				c.pendingMapTasks <- task
-			}
-		}()
-		return task
-	default:
-		return NoopTask{}
-	}
-}
-
-func (c *Coordinator) allReduceTasksDone() bool {
-	c.mtxFinishedReduceTasks.Lock()
-	defer c.mtxFinishedReduceTasks.Unlock()
-	return len(c.finishedReduceTasks) == c.nReduce
-}
-
-func (c *Coordinator) nextReduceTask() Task {
-	// if pendingReduceTasks is empty, return NoopTask
-	// else return the next reduce task
-	select {
-	case task := <-c.pendingReduceTasks:
-		go func() {
-			// check if the task is done after timeout
-			time.Sleep(c.timeout)
-			c.mtxFinishedReduceTasks.Lock()
-			defer c.mtxFinishedReduceTasks.Unlock()
-			if _, ok := c.finishedReduceTasks[task.Id]; !ok {
-				log.Printf("task %v is not finished after timeout, put it back to pendingReduceTasks", task.Id)
-				c.pendingReduceTasks <- task
-			}
-		}()
-		return task
-	default:
-		return NoopTask{}
+	nMap := len(files)
+	for i := 0; i < nReduce; i++ {
+		c.reduceTaskManager.addTask(
+			ReduceTask{
+				Id:   i,
+				NMap: nMap,
+			},
+		)
 	}
 }
 
 func (c *Coordinator) GetTask(args *GetTaskArgs, reply *GetTaskReply) error {
-	if !c.allMapTasksDone() {
-		reply.Task = c.nextMapTask()
+	if !c.mapTaskManager.done() {
+		reply.Task = c.mapTaskManager.next()
 		return nil
-	} else if !c.allReduceTasksDone() {
-		reply.Task = c.nextReduceTask()
+	} else if !c.reduceTaskManager.done() {
+		reply.Task = c.reduceTaskManager.next()
 		return nil
 	} else {
 		reply.Task = StopTask{}
@@ -126,25 +110,9 @@ func (c *Coordinator) ReportTaskDone(args *ReportTaskDoneArgs, reply *ReportTask
 	// corner case: task is assigned to worker A but it finished after coordinator think A has crashed and assigned it to worker B
 	switch args.Task.(type) {
 	case MapTask:
-		c.mtxFinishedMapTasks.Lock()
-		defer c.mtxFinishedMapTasks.Unlock()
-		task := args.Task.(MapTask)
-		if _, ok := c.finishedMapTasks[task.Id]; ok {
-			errMsg := fmt.Sprintf("map task %v has been finished before", task.Id)
-			log.Printf(errMsg)
-			return errors.New(errMsg)
-		}
-		c.finishedMapTasks[task.Id] = true
+		c.mapTaskManager.markTaskDone(args.Task)
 	case ReduceTask:
-		c.mtxFinishedReduceTasks.Lock()
-		defer c.mtxFinishedReduceTasks.Unlock()
-		task := args.Task.(ReduceTask)
-		if _, ok := c.finishedReduceTasks[task.Id]; ok {
-			errMsg := fmt.Sprintf("reduce task %v has been finished before", task.Id)
-			log.Printf(errMsg)
-			return errors.New(errMsg)
-		}
-		c.finishedReduceTasks[task.Id] = true
+		c.reduceTaskManager.markTaskDone(args.Task)
 	default:
 		log.Fatalf("invalid task type: %v for ReportTaskDone", args.Task)
 	}
@@ -172,28 +140,20 @@ func (c *Coordinator) server() {
 // main/mrcoordinator.go calls Done() periodically to find out
 // if the entire job has finished.
 func (c *Coordinator) Done() bool {
-	return c.allReduceTasksDone()
+	return c.reduceTaskManager.done()
 }
 
 // create a Coordinator.
 // main/mrcoordinator.go calls this function.
 // NReduce is the number of reduce tasks to use.
 func MakeCoordinator(files []string, nReduce int) *Coordinator {
+	timeout := 10 * time.Second
 	c := Coordinator{
-		pendingMapTasks:     make(chan MapTask, len(files)),
-		finishedMapTasks:    make(map[int]bool),
-		pendingReduceTasks:  make(chan ReduceTask, nReduce),
-		finishedReduceTasks: make(map[int]bool),
-
-		files:   files,
-		mapId:   make(map[string]int),
-		nMap:    len(files),
-		nReduce: nReduce,
-
-		timeout: 10 * time.Second,
+		mapTaskManager:    NewTaskManager(len(files), timeout),
+		reduceTaskManager: NewTaskManager(nReduce, timeout),
 	}
 
-	c.init()
+	c.init(files, nReduce)
 	c.server()
 	return &c
 }
