@@ -4,7 +4,6 @@ import "6.5840/labrpc"
 import "crypto/rand"
 import "math/big"
 
-
 type Clerk struct {
 	server *labrpc.ClientEnd
 	// You will have to modify this struct.
