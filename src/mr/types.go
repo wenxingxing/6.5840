@@ -105,7 +105,7 @@ func (t MapTask) Process(w *MRWorker) (ShouldStop, error) {
 		}
 	}
 
-	err = w.reportMapTaskDone(t)
+	err = w.reportTaskDone(t)
 	if err != nil {
 		slog.Error("Failed to report map task done", t)
 		return Continue, err
@@ -174,7 +174,7 @@ func (t ReduceTask) Process(w *MRWorker) (ShouldStop, error) {
 		i = j
 	}
 
-	err = w.reportReduceTaskDone(t)
+	err = w.reportTaskDone(t)
 	if err != nil {
 		slog.Error("Failed to report reduce task done", t)
 		return Continue, err
