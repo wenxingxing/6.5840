@@ -129,7 +129,7 @@ type ReduceTask struct {
 func (t ReduceTask) Process(w *MRWorker) (ShouldStop, error) {
 	intermediate := []KeyValue{}
 
-	// read mr-0-Id -> mr-(NMap-1)-Id
+	// read all intermediate files
 	for i := 0; i < t.NMap; i++ {
 		oname := intermediateFilename(i, t.Id)
 		file, err := os.Open(oname)

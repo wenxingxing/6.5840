@@ -188,7 +188,6 @@ func MakeCoordinator(files []string, nReduce int) *Coordinator {
 	}
 
 	c.init()
-
 	c.server()
 	return &c
 }
