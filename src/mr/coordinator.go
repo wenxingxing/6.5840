@@ -35,15 +35,15 @@ func (c *Coordinator) init() {
 	}
 	for i := 0; i < c.nMap; i++ {
 		c.pendingMapTasks <- MapTask{
-			id:       i,
-			filename: c.files[i],
-			nReduce:  c.nReduce,
+			Id:       i,
+			Filename: c.files[i],
+			NReduce:  c.nReduce,
 		}
 	}
 	for i := 0; i < c.nReduce; i++ {
 		c.pendingReduceTasks <- ReduceTask{
-			id:   i,
-			nMap: c.nMap,
+			Id:   i,
+			NMap: c.nMap,
 		}
 	}
 }
@@ -64,8 +64,8 @@ func (c *Coordinator) nextMapTask() Task {
 			time.Sleep(c.timeout)
 			c.mtxFinishedMapTasks.Lock()
 			defer c.mtxFinishedMapTasks.Unlock()
-			if _, ok := c.finishedMapTasks[task.id]; !ok {
-				log.Printf("task %v is not finished after timeout, put it back to pendingMapTasks", task.id)
+			if _, ok := c.finishedMapTasks[task.Id]; !ok {
+				log.Printf("task %v is not finished after timeout, put it back to pendingMapTasks", task.Id)
 				c.pendingMapTasks <- task
 			}
 		}()
@@ -91,8 +91,8 @@ func (c *Coordinator) nextReduceTask() Task {
 			time.Sleep(c.timeout)
 			c.mtxFinishedReduceTasks.Lock()
 			defer c.mtxFinishedReduceTasks.Unlock()
-			if _, ok := c.finishedReduceTasks[task.id]; !ok {
-				log.Printf("task %v is not finished after timeout, put it back to pendingReduceTasks", task.id)
+			if _, ok := c.finishedReduceTasks[task.Id]; !ok {
+				log.Printf("task %v is not finished after timeout, put it back to pendingReduceTasks", task.Id)
 				c.pendingReduceTasks <- task
 			}
 		}()
@@ -105,9 +105,11 @@ func (c *Coordinator) nextReduceTask() Task {
 func (c *Coordinator) GetTask(args *GetTaskArgs, reply *GetTaskReply) error {
 	if !c.allMapTasksDone() {
 		reply.Task = c.nextMapTask()
+		log.Printf("GetTask: %v", reply.Task)
 		return nil
 	} else if !c.allReduceTasksDone() {
 		reply.Task = c.nextReduceTask()
+		log.Printf("GetTask: %v", reply.Task)
 		return nil
 	} else {
 		reply.Task = StopTask{}
@@ -123,22 +125,22 @@ func (c *Coordinator) ReportTaskDone(args *ReportTaskDoneArgs, reply *ReportTask
 		c.mtxFinishedMapTasks.Lock()
 		defer c.mtxFinishedMapTasks.Unlock()
 		task := args.Task.(MapTask)
-		if _, ok := c.finishedMapTasks[task.id]; ok {
-			errMsg := fmt.Sprintf("map task %v has been finished before", task.id)
+		if _, ok := c.finishedMapTasks[task.Id]; ok {
+			errMsg := fmt.Sprintf("map task %v has been finished before", task.Id)
 			log.Printf(errMsg)
 			return errors.New(errMsg)
 		}
-		c.finishedMapTasks[task.id] = true
+		c.finishedMapTasks[task.Id] = true
 	case ReduceTask:
 		c.mtxFinishedReduceTasks.Lock()
 		defer c.mtxFinishedReduceTasks.Unlock()
 		task := args.Task.(ReduceTask)
-		if _, ok := c.finishedReduceTasks[task.id]; ok {
-			errMsg := fmt.Sprintf("reduce task %v has been finished before", task.id)
+		if _, ok := c.finishedReduceTasks[task.Id]; ok {
+			errMsg := fmt.Sprintf("reduce task %v has been finished before", task.Id)
 			log.Printf(errMsg)
 			return errors.New(errMsg)
 		}
-		c.finishedReduceTasks[task.id] = true
+		c.finishedReduceTasks[task.Id] = true
 	default:
 		log.Fatalf("invalid task type: %v for ReportTaskDone", args.Task)
 	}
@@ -166,16 +168,12 @@ func (c *Coordinator) server() {
 // main/mrcoordinator.go calls Done() periodically to find out
 // if the entire job has finished.
 func (c *Coordinator) Done() bool {
-	ret := true
-
-	// Your code here.
-
-	return ret
+	return c.allReduceTasksDone()
 }
 
 // create a Coordinator.
 // main/mrcoordinator.go calls this function.
-// nReduce is the number of reduce tasks to use.
+// NReduce is the number of reduce tasks to use.
 func MakeCoordinator(files []string, nReduce int) *Coordinator {
 	c := Coordinator{
 		pendingMapTasks:     make(chan MapTask, len(files)),

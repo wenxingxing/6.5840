@@ -15,5 +15,5 @@ func ihash(key string) int {
 
 func intermediateFilename(mapId int, reduceId int) string {
 	// mr-mapId-reduceId
-	return "mr-" + strconv.Itoa(mapId) + "-" + strconv.Itoa(reduceId)
+	return "intermediate-" + strconv.Itoa(mapId) + "-" + strconv.Itoa(reduceId)
 }

@@ -1,6 +1,7 @@
 package mr
 
 import (
+	"encoding/gob"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -10,6 +11,13 @@ import (
 	"strconv"
 	"time"
 )
+
+func init() {
+	gob.Register(MapTask{})
+	gob.Register(ReduceTask{})
+	gob.Register(NoopTask{})
+	gob.Register(StopTask{})
+}
 
 type KeyValue struct {
 	Key   string
@@ -53,15 +61,15 @@ func (t StopTask) Process(_ *MRWorker) (ShouldStop, error) {
 }
 
 type MapTask struct {
-	filename string
-	id       int
-	nReduce  int
+	Filename string
+	Id       int
+	NReduce  int
 }
 
 func (t MapTask) Process(w *MRWorker) (ShouldStop, error) {
-	slog.Info("MapTask", t.id, t.filename)
+	slog.Info("MapTask", t)
 	// read task file
-	filename := t.filename
+	filename := t.Filename
 	file, err := os.Open(filename)
 	defer file.Close()
 	if err != nil {
@@ -75,11 +83,11 @@ func (t MapTask) Process(w *MRWorker) (ShouldStop, error) {
 	}
 	kva := w.mapF(filename, string(content))
 
-	// open all nReduce files
-	ofiles := make([]*os.File, t.nReduce)
-	encs := make([]*json.Encoder, t.nReduce)
-	for i := 0; i < t.nReduce; i++ {
-		oname := intermediateFilename(t.id, i)
+	// open all NReduce files
+	ofiles := make([]*os.File, t.NReduce)
+	encs := make([]*json.Encoder, t.NReduce)
+	for i := 0; i < t.NReduce; i++ {
+		oname := intermediateFilename(t.Id, i)
 		// append to file, create if not exist
 		ofile, err := os.OpenFile(oname, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 		if err != nil {
@@ -95,9 +103,9 @@ func (t MapTask) Process(w *MRWorker) (ShouldStop, error) {
 		}
 	}()
 
-	// output into nReduce buckets
+	// output into NReduce buckets
 	for _, kv := range kva {
-		bucket := ihash(kv.Key) % t.nReduce
+		bucket := ihash(kv.Key) % t.NReduce
 		err := encs[bucket].Encode(kv)
 		if err != nil {
 			slog.Error("Failed to encode kv", kv, "into bucket", bucket)
@@ -115,17 +123,17 @@ func (t MapTask) Process(w *MRWorker) (ShouldStop, error) {
 }
 
 type ReduceTask struct {
-	id   int
-	nMap int
+	Id   int
+	NMap int
 }
 
 func (t ReduceTask) Process(w *MRWorker) (ShouldStop, error) {
-	slog.Info("ReduceTask", t.id)
+	slog.Info("ReduceTask", t)
 	intermediate := []KeyValue{}
 
-	// read mr-0-id -> mr-(nMap-1)-id
-	for i := 0; i < t.nMap; i++ {
-		oname := intermediateFilename(i, t.id)
+	// read mr-0-Id -> mr-(NMap-1)-Id
+	for i := 0; i < t.NMap; i++ {
+		oname := intermediateFilename(i, t.Id)
 		file, err := os.Open(oname)
 		if err != nil {
 			slog.Error("cannot open", oname, err)
@@ -148,7 +156,7 @@ func (t ReduceTask) Process(w *MRWorker) (ShouldStop, error) {
 	sort.Sort(ByKey(intermediate))
 
 	// open reduce output file
-	oname := "mr-out-" + strconv.Itoa(t.id)
+	oname := "mr-out-" + strconv.Itoa(t.Id)
 	ofile, err := os.Create(oname)
 	if err != nil {
 		slog.Error("cannot create", oname, err)
