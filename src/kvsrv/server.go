@@ -38,60 +38,48 @@ func (kv *KVServer) Get(args *GetArgs, reply *GetReply) {
 
 func (kv *KVServer) Put(args *PutAppendArgs, reply *PutAppendReply) {
 	DPrintf("Put {%v} => {%v}\n", args.Key, args.Value)
-
-	kv.mu.Lock()
-	defer kv.mu.Unlock()
-
-	cachedResult, isProcessed := kv.getProcessed(args.ID)
-	if isProcessed {
-		reply.Value = cachedResult
-		return
-	}
-
-	// work
-	key := args.Key
-	value := args.Value
-	old, ok := kv.store[key]
-	kv.store[key] = value
-	if ok {
-		reply.Value = old
-	} else {
-		reply.Value = ""
-	}
-	kv.saveProcessed(args.ID, reply.Value)
+	kv.safeOp(args, reply, (*KVServer).unsafePut)
 }
 
 func (kv *KVServer) Append(args *PutAppendArgs, reply *PutAppendReply) {
 	DPrintf("Append {%v} => {%v}\n", args.Key, args.Value)
+	kv.safeOp(args, reply, (*KVServer).unsafeAppend)
+}
+
+// safeOp wraps the unsafeOp function with a lock to ensure that the operation is atomic.
+func (kv *KVServer) safeOp(args *PutAppendArgs, reply *PutAppendReply, unsafeOp func(*KVServer, string, string) string) {
 	kv.mu.Lock()
 	defer kv.mu.Unlock()
-	cachedResult, isProcessed := kv.getProcessed(args.ID)
-	if isProcessed {
-		reply.Value = cachedResult
+
+	if cached, isProcessed := kv.result[args.ID]; isProcessed {
+		reply.Value = cached
 		return
 	}
 
-	// work
-	key := args.Key
-	value := args.Value
-	old, ok := kv.store[key]
-	if ok {
+	reply.Value = unsafeOp(kv, args.Key, args.Value)
+
+	kv.result[args.ID] = reply.Value
+}
+
+func (kv *KVServer) unsafePut(key string, value string) string {
+	old, existed := kv.store[key]
+	kv.store[key] = value
+	if existed {
+		return old
+	} else {
+		return ""
+	}
+}
+
+func (kv *KVServer) unsafeAppend(key string, value string) string {
+	old, existed := kv.store[key]
+	if existed {
 		kv.store[key] = old + value
-		reply.Value = old
+		return old
 	} else {
 		kv.store[key] = value
-		reply.Value = ""
+		return ""
 	}
-	kv.saveProcessed(args.ID, reply.Value)
-}
-
-func (kv *KVServer) getProcessed(id int64) (string, bool) {
-	value, ok := kv.result[id]
-	return value, ok
-}
-
-func (kv *KVServer) saveProcessed(id int64, value string) {
-	kv.result[id] = value
 }
 
 func StartKVServer() *KVServer {
