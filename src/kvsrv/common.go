@@ -22,3 +22,10 @@ type GetArgs struct {
 type GetReply struct {
 	Value string
 }
+
+type ResultReceivedArgs struct {
+	ID int64
+}
+
+type ResultReceivedReply struct {
+}

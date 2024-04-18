@@ -2,7 +2,6 @@ package kvsrv
 
 import (
 	"6.5840/labrpc"
-	"time"
 )
 import "crypto/rand"
 import "math/big"
@@ -59,14 +58,25 @@ func (ck *Clerk) Get(key string) string {
 func (ck *Clerk) PutAppend(key string, value string, op string) string {
 	args := PutAppendArgs{Key: key, Value: value, ID: nrand()}
 	reply := PutAppendReply{}
+	result := ""
 	for {
 		ok := ck.server.Call("KVServer."+op, &args, &reply)
 		if ok {
-			return reply.Value
-		} else {
-			time.Sleep(1 * time.Second)
+			result = reply.Value
+			break
 		}
 	}
+
+	// tell the server that the result has been received
+	for {
+		args := ResultReceivedArgs{ID: args.ID}
+		reply := ResultReceivedReply{}
+		if ok := ck.server.Call("KVServer.ResultReceived", &args, &reply); ok {
+			break
+		}
+	}
+
+	return result
 }
 
 func (ck *Clerk) Put(key string, value string) {

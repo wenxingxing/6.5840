@@ -46,6 +46,14 @@ func (kv *KVServer) Append(args *PutAppendArgs, reply *PutAppendReply) {
 	kv.safeOp(args, reply, (*KVServer).unsafeAppend)
 }
 
+// ResultReceived is called by the client to confirm that the result has been received for ID, so that
+// the server can safely discard the result.
+func (kv *KVServer) ResultReceived(args *ResultReceivedArgs, reply *ResultReceivedReply) {
+	kv.mu.Lock()
+	defer kv.mu.Unlock()
+	delete(kv.result, args.ID)
+}
+
 // safeOp wraps the unsafeOp function with a lock to ensure that the operation is atomic.
 func (kv *KVServer) safeOp(args *PutAppendArgs, reply *PutAppendReply, unsafeOp func(*KVServer, string, string) string) {
 	kv.mu.Lock()
