@@ -18,7 +18,8 @@ type KVServer struct {
 	mu sync.Mutex
 
 	// Your definitions here.
-	store map[string]string
+	store  map[string]string
+	result map[int64]string
 }
 
 func (kv *KVServer) Get(args *GetArgs, reply *GetReply) {
@@ -41,9 +42,15 @@ func (kv *KVServer) Put(args *PutAppendArgs, reply *PutAppendReply) {
 	kv.mu.Lock()
 	defer kv.mu.Unlock()
 
+	cachedResult, isProcessed := kv.getProcessed(args.ID)
+	if isProcessed {
+		reply.Value = cachedResult
+		return
+	}
+
+	// work
 	key := args.Key
 	value := args.Value
-	// replace the old value
 	old, ok := kv.store[key]
 	kv.store[key] = value
 	if ok {
@@ -51,13 +58,20 @@ func (kv *KVServer) Put(args *PutAppendArgs, reply *PutAppendReply) {
 	} else {
 		reply.Value = ""
 	}
+	kv.saveProcessed(args.ID, reply.Value)
 }
 
 func (kv *KVServer) Append(args *PutAppendArgs, reply *PutAppendReply) {
 	DPrintf("Append {%v} => {%v}\n", args.Key, args.Value)
-
 	kv.mu.Lock()
 	defer kv.mu.Unlock()
+	cachedResult, isProcessed := kv.getProcessed(args.ID)
+	if isProcessed {
+		reply.Value = cachedResult
+		return
+	}
+
+	// work
 	key := args.Key
 	value := args.Value
 	old, ok := kv.store[key]
@@ -68,6 +82,16 @@ func (kv *KVServer) Append(args *PutAppendArgs, reply *PutAppendReply) {
 		kv.store[key] = value
 		reply.Value = ""
 	}
+	kv.saveProcessed(args.ID, reply.Value)
+}
+
+func (kv *KVServer) getProcessed(id int64) (string, bool) {
+	value, ok := kv.result[id]
+	return value, ok
+}
+
+func (kv *KVServer) saveProcessed(id int64, value string) {
+	kv.result[id] = value
 }
 
 func StartKVServer() *KVServer {
@@ -75,6 +99,7 @@ func StartKVServer() *KVServer {
 
 	// You may need initialization code here.
 	kv.store = make(map[string]string)
+	kv.result = make(map[int64]string)
 
 	return kv
 }
